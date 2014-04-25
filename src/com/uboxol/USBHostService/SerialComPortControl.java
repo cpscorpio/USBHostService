@@ -40,8 +40,8 @@ public class SerialComPortControl {
 
     public DeviceStatus status = DeviceStatus.NOT_CONNECT;
 
-    Timer timerSend = new Timer();      //发送定时器
-    Timer timerRead = new Timer();      //接受定时器
+    Timer timerSend = null;
+    Timer timerRead = null;      //接受定时器
 
 
     //接收消息
@@ -67,16 +67,19 @@ public class SerialComPortControl {
         this.usbManager = (UsbManager) this.context.getSystemService(Context.USB_SERVICE);
     }
 
-    TimerTask readTimerTask = new TimerTask() {
+    TimerTask readTimerTask = null;
+    TimerTask sendTimerTask =  null;
 
+    class ReadTimerTask extends TimerTask
+    {
         @Override
         public void run() {
             // 需要做的事:发送消息
             readMessageHandler.obtainMessage(1).sendToTarget();
         }
-    };
-    TimerTask sendTimerTask = new TimerTask() {
-
+    }
+    class SendTimerTask extends TimerTask
+    {
         @Override
         public void run() {
             // 需要做的事:发送消息
@@ -87,7 +90,7 @@ public class SerialComPortControl {
             sendMessageCOM5Handler.obtainMessage(1).sendToTarget();
 
         }
-    };
+    }
 
     public void disconnectAllPort() throws Exception
     {
@@ -134,6 +137,7 @@ public class SerialComPortControl {
         {
             return true;
         }
+        this.usbManager = (UsbManager) this.context.getSystemService(Context.USB_SERVICE);
         HashMap< String, UsbDevice> deviceList = usbManager.getDeviceList();
         if(deviceList != null)
         {
@@ -190,9 +194,11 @@ public class SerialComPortControl {
                     usbManager.requestPermission(usbDevice, pi);
                     status = DeviceStatus.CONNECTING;
                 }
+
             }
             else
             {
+                printDebugLog("not Find Device");
                 status = DeviceStatus.NOT_CONNECT;
             }
         }catch (Exception e)
@@ -225,15 +231,17 @@ public class SerialComPortControl {
      */
     public boolean connectDevice() throws Exception
     {
+        this.usbManager = (UsbManager) this.context.getSystemService(Context.USB_SERVICE);
         if( findUsbDevice() && usbManager.hasPermission(usbDevice)){
 
             if( usbDeviceConnection != null){
                 usbDeviceConnection.close();
             }
-
+//            usbDeviceConnection.
             usbDeviceConnection = usbManager.openDevice( usbDevice);
             if (usbDeviceConnection == null)
             {
+                printDebugLog("not open device");
                 status = DeviceStatus.NOT_CONNECT;
                 return false;
             }
@@ -246,14 +254,19 @@ public class SerialComPortControl {
             }
             readThread= new ReadUsbMessageThread();
             readThread.start();
+//            timerRead = new Timer();
 //            timerRead.schedule(readTimerTask, 0, TimeOut);    //马上执行，每100ms执行一次 TODO
+            timerSend = new Timer();
+            sendTimerTask = new SendTimerTask();
             timerSend.schedule(sendTimerTask, 0, TimeOut);
 
             status = DeviceStatus.CONNECTED;
+            printDebugLog(DeviceStatus.CONNECTED.toString());
             return true;
         }
         else
         {
+            printDebugLog("not find Device or no Permission");
             status = DeviceStatus.NOT_CONNECT;
             return false;
         }
@@ -376,10 +389,12 @@ public class SerialComPortControl {
             }
             checkCacheLength();
 //                int maxLen = (int)((int)( System.currentTimeMillis() - port.ts) * ( (float)port.getBaudRate() / (1000* 12)));// arm 发送的数据
+//
 //                maxLen = maxLen > 2000 ? 2000 : maxLen;     //最大2K
 
-                int maxLen = port.maxSendLength - 1440;
+                int maxLen = port.maxSendLength - 63;
                 int length = 0;
+                Tools.WriteData("maxLen:" + maxLen + "\n");
 
 //                打开文件
 //                FileOutputStream fout = null;
@@ -390,7 +405,7 @@ public class SerialComPortControl {
 //                    e.printStackTrace();
 //                }
 
-                while (length < maxLen )
+                while (length < maxLen - 63)
                 {
                     byte [] data = new byte[64];
                     int len = port.sendBuffer.read(data,0,60);
@@ -420,6 +435,7 @@ public class SerialComPortControl {
 //                    }
                     length += len;
                 }
+             Tools.WriteData("sendLen:" + length + "\n");
 
                 //关闭文件
 //                if (fout != null){
@@ -465,7 +481,9 @@ public class SerialComPortControl {
 
 
                     dataLength = usbDeviceConnection.bulkTransfer( usbEndPoint[1][1], myBuffer, RECV_LENGTH, 100);
-
+//                    byte[] t = new byte[dataLength];
+//                    System.arraycopy(myBuffer, 0, t, 0, dataLength);
+//                    Tools.WriteData(0, t);
 
                     for (int i = 0; i < dataLength; i++) {
                         if( readDateTransfer.AddData(myBuffer[i]))
@@ -496,16 +514,52 @@ public class SerialComPortControl {
     public void close() throws Exception
     {
         disconnectAllPort();
+        status = DeviceStatus.NOT_CONNECT;
 
-        readTimerTask.cancel();
-        sendTimerTask.cancel();
+        if ( readTimerTask != null)
+        {
+            readTimerTask.cancel();
+            readTimerTask = null;
+        }
+
+        if ( sendTimerTask != null)
+        {
+            sendTimerTask.cancel();
+            sendTimerTask = null;
+        }
+
+
+        if(timerRead!= null)
+        {
+            timerRead.cancel();
+            timerRead = null;
+        }
+        if (timerSend != null)
+        {
+            timerSend.cancel();
+            timerSend = null;
+        }
+
+
+
         if (readThread != null)
         {
             readThread.stopThread();
         }
         if (usbDeviceConnection != null)
         {
+
+            for (int i = 0; i < usbInterface.length; i++) {
+                if (usbInterface[i] != null)
+                {
+                    usbDeviceConnection.releaseInterface(usbInterface[i]);
+                }
+            }
+
+            usbInterface = null;
             usbDeviceConnection.close();
+            usbDeviceConnection = null;
+            usbDevice = null;
         }
     }
 

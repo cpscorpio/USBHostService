@@ -118,17 +118,20 @@ public class MainService extends Service {
                 }
                 else if(intent.getAction().equals(UboxAction.ACTION_USB_PERMISSION))    //获取USB权限返回值
                 {
+
                     boolean needSend = serialComPortControl.status == DeviceStatus.CONNECTING;
 
 
                     if( intent.getBooleanExtra( UsbManager.EXTRA_PERMISSION_GRANTED, false))
                     {
                         //获取权限成功
+                        printDebugLog("true");
                         serialComPortControl.connectDevice();
                     }
                     else
                     {
                         serialComPortControl.status = DeviceStatus.NOT_CONNECT;
+                        printDebugLog("false");
                     }
                     if ( needSend)
                     {

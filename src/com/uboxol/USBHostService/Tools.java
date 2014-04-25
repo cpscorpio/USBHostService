@@ -25,26 +25,26 @@ public class Tools {
 
     private final static String FILE_NAME = "/mnt/sdcard/log_com_server";
 
-//    public static  void WriteData(String message)
-//    {
-//        try{
-//
-//            FileOutputStream fout = new FileOutputStream(FILE_NAME,true);
-//
-//            byte [] bytes = message.getBytes();
-//
-//            fout.write(bytes);
-//
-//            fout.close();
-//
-//        }
-//
-//        catch(Exception e){
-//
-//            e.printStackTrace();
-//
-//        }
-//    }
+    public static  void WriteData(String message)
+    {
+        try{
+
+            FileOutputStream fout = new FileOutputStream("/mnt/sdcard/server_log.txt",true);
+
+            byte [] bytes = message.getBytes();
+
+            fout.write(bytes);
+
+            fout.close();
+
+        }
+
+        catch(Exception e){
+
+            e.printStackTrace();
+
+        }
+    }
 //
     public static  void WriteData( int com, byte [] bytes)
     {
