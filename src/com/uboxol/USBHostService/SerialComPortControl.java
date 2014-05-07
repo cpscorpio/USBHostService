@@ -103,17 +103,19 @@ public class SerialComPortControl {
     {
         for ( SerialComPort com : portList)
         {
+            com.close();
             com.removeAction(appAction);
         }
     }
-//    public void sendMessage(int portIndex, SerialComPortMessage message) throws Exception
-//    {
-//        portList.get(portIndex).getSendCacheMessageList().add( message);
-//    }
 
+
+    private SerialComPort getPort( int index)
+    {
+        return portList.get(index);
+    }
     public void sendMessage(int portIndex, byte[] b, int len ) throws Exception
     {
-        portList.get(portIndex).sendBuffer.put(b,0,len);
+        getPort(portIndex).send(b, 0, len);
     }
 
     /**
@@ -121,19 +123,22 @@ public class SerialComPortControl {
      * @param device is the Device
      * @return is'nt true
      */
-    private boolean isTheDevice(UsbDevice device) throws Exception
+    private boolean isTheDevice(UsbDevice device)
     {
-        return device.getVendorId() == deviceVendorId && device.getProductId() == deviceProductId;
+        if (device != null){
+            return device.getVendorId() == deviceVendorId && device.getProductId() == deviceProductId;
+        }
+        return false;
     }
 
     /**
      * 检测USB设备
      * @return is'nt findDevice
      */
-    private boolean findUsbDevice() throws Exception
+    private boolean findUsbDevice()
     {
         if( usbDevice != null && usbDevice.getVendorId() == deviceVendorId
-                              && usbDevice.getProductId() == deviceProductId)
+                && usbDevice.getProductId() == deviceProductId)
         {
             return true;
         }
@@ -192,7 +197,7 @@ public class SerialComPortControl {
                     //请求连接中
                     PendingIntent pi = PendingIntent.getBroadcast(context, 0, new Intent(UboxAction.ACTION_USB_PERMISSION), 0);
                     usbManager.requestPermission(usbDevice, pi);
-                    status = DeviceStatus.CONNECTING;
+                    status = DeviceStatus.NO_PERMISSION;
                 }
 
             }
@@ -215,21 +220,11 @@ public class SerialComPortControl {
         return status == DeviceStatus.CONNECTED;
     }
 
-    public boolean isConnecting()
-    {
-        return status == DeviceStatus.CONNECTING;
-    }
-
-    public boolean isDisConnect()
-    {
-        return status == DeviceStatus.NOT_CONNECT;
-    }
-
     /**
      * 打开USB设备
      * @return is'nt Open?
      */
-    public boolean connectDevice() throws Exception
+    public boolean connectDevice()
     {
         this.usbManager = (UsbManager) this.context.getSystemService(Context.USB_SERVICE);
         if( findUsbDevice() && usbManager.hasPermission(usbDevice)){
@@ -238,7 +233,15 @@ public class SerialComPortControl {
                 usbDeviceConnection.close();
             }
 //            usbDeviceConnection.
-            usbDeviceConnection = usbManager.openDevice( usbDevice);
+            try {
+                usbDeviceConnection = usbManager.openDevice( usbDevice);
+            }
+            catch (Exception e)
+            {
+                e.printStackTrace();
+                return false;
+            }
+
             if (usbDeviceConnection == null)
             {
                 printDebugLog("not open device");
@@ -254,8 +257,7 @@ public class SerialComPortControl {
             }
             readThread= new ReadUsbMessageThread();
             readThread.start();
-//            timerRead = new Timer();
-//            timerRead.schedule(readTimerTask, 0, TimeOut);    //马上执行，每100ms执行一次 TODO
+
             timerSend = new Timer();
             sendTimerTask = new SendTimerTask();
             timerSend.schedule(sendTimerTask, 0, TimeOut);
@@ -285,44 +287,53 @@ public class SerialComPortControl {
 
         printDebugLog(String.format("%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x ",datas[0],datas[1],datas[2],datas[3],datas[4],datas[5],datas[6],datas[7],datas[8],datas[9]));
     }
-    public SerialComPortStatus open( SerialComPort port, String appAction) throws Exception
+    public SerialComPortStatus open( int com_id, int baud_rate, int stop_bits, int data_bits, int parity, String appAction) throws Exception
     {
-        if ( usbDeviceConnection != null)
+        SerialComPort port = getPort( com_id - 1);
+
+        switch (getDeviceStatus())
         {
-
-            SerialComPort com = portList.get(port.getPortId() - 1);
-            disconnectPort(appAction);
-            if ( com.getAppAction().equals("") || com.getAppAction().equals(appAction))
-            {
-                com.setBaudRate( port.getBaudRate());
-                com.setDataBits( port.getDataBits());
-                com.setParity( port.getParity());
-                com.setStopBits( port.getStopBits());
-                com.setAppAction( appAction);
-                int len = 7;
-                byte[] data = com.toBytes();
-                int value = usbDeviceConnection.controlTransfer( SEND_CTR_REQ_Type | UsbConstants.USB_DIR_OUT, SEND_CTR_REQ, 0, 0, data, len, SEND_CTR_TIMEOUT);
-
-                while (value < len && value != 0)
+            case NOT_CONNECT:
+                port.close();
+                break;
+            case CONNECTED:{
+                if ( usbDeviceConnection != null)
                 {
-                    len = len  - value;
-                    byte[] sendByte = new byte[len];
-                    System.arraycopy( data,value,sendByte,0,len);
+                    disconnectPort(appAction);
+                    if ( port.getAppAction().equals("") || port.getAppAction().equals(appAction))
+                    {
+                        port.open(baud_rate, stop_bits, data_bits, parity);
+                        port.setAppAction( appAction);
+                        int len = 7;
+                        byte[] data = port.getSerialBytes();
+                        int value = usbDeviceConnection.controlTransfer( SEND_CTR_REQ_Type | UsbConstants.USB_DIR_OUT, SEND_CTR_REQ, 0, 0, data, len, SEND_CTR_TIMEOUT);
 
-                    value = usbDeviceConnection.controlTransfer( SEND_CTR_REQ_Type | UsbConstants.USB_DIR_OUT , SEND_CTR_REQ, 0, 0, sendByte, len, SEND_CTR_TIMEOUT);
-                    data = sendByte;
+                        while (value < len && value != 0)
+                        {
+                            len = len  - value;
+                            byte[] sendByte = new byte[len];
+                            System.arraycopy( data,value,sendByte,0,len);
+
+                            value = usbDeviceConnection.controlTransfer( SEND_CTR_REQ_Type | UsbConstants.USB_DIR_OUT , SEND_CTR_REQ, 0, 0, sendByte, len, SEND_CTR_TIMEOUT);
+                            data = sendByte;
+                        }
+                        return SerialComPortStatus.CONNECTED; // success
+                    }
+                    else
+                    {
+                        return SerialComPortStatus.BE_USAGE;
+                    }
                 }
-                return SerialComPortStatus.CONNECTED; // success
+                else
+                {
+                    return SerialComPortStatus.DEVICE_NOT_CONNECT;
+                }
             }
-            else
-            {
-                return SerialComPortStatus.BE_USAGE;
-            }
+            case NO_PERMISSION:
+                return SerialComPortStatus.DEVICE_NO_PERMISSION;
         }
-        else
-        {
-            return SerialComPortStatus.NOT_CONNECT;
-        }
+        return port.getStatus();
+
     }
 
 
@@ -349,16 +360,16 @@ public class SerialComPortControl {
 
             for (SerialComPort port : portList)
             {
-                if (port.getAppAction().equals("") || port.readBuffer.getSize() == 0)
+                if (port.getAppAction().equals("") || port.getReadSize() == 0)
                 {
                     continue;
                 }
                 byte[] data = new byte[1024];
-                int len = port.readBuffer.read(data,0,1024);
+                int len = port.read(data,0,1024);
                 while (len > 0)
                 {
                     sendMessageFromCom(port.getAppAction(), port.getPortId(), data,  len);
-                    len = port.readBuffer.read(data,0,1024);
+                    len = port.read(data,0,1024);
                 }
 
             }
@@ -383,73 +394,37 @@ public class SerialComPortControl {
 
             SerialComPort port = portList.get(index);
 
-            if (port.sendBuffer.getSize() == 0)
+            if (port.getSendSize() == 0)
             {
                 return;
             }
             checkCacheLength();
-//                int maxLen = (int)((int)( System.currentTimeMillis() - port.ts) * ( (float)port.getBaudRate() / (1000* 12)));// arm 发送的数据
-//
-//                maxLen = maxLen > 2000 ? 2000 : maxLen;     //最大2K
 
-                int maxLen = port.maxSendLength - 63;
-                int length = 0;
-                Tools.WriteData("maxLen:" + maxLen + "\n");
+            int maxLen = port.maxSendLength - 63;
+            int length = 0;
 
-//                打开文件
-//                FileOutputStream fout = null;
-//                try{
-//                    String fileName = "/mnt/sdcard/server_com" + port.getPortId() + ".txt";
-//                    fout = new FileOutputStream( fileName, true);
-//                }catch(Exception e){
-//                    e.printStackTrace();
-//                }
-
-                while (length < maxLen - 63)
+            while (length < maxLen - 63)
+            {
+                byte [] data = new byte[64];
+                int len = port.getSendData(data, 0, 60);
+                if (len <=0)
                 {
-                    byte [] data = new byte[64];
-                    int len = port.sendBuffer.read(data,0,60);
-                    if (len <=0)
-                    {
-                        break;
-                    }
-                    byte [] datas = DataTransfer.getDataBuffer( port.getPortId(), data, len);
-                    int dataLength = len + 3;
-                    int value = usbDeviceConnection.bulkTransfer(usbEndPoint[1][0],datas, len + 3,100);
-//                    if (fout != null) {
-//                        try {
-//
-//                            fout.write(datas);
-//                        } catch (IOException e) {
-//                            e.printStackTrace();
-//                        }
-//                    }
-//                    while (value != dataLength && value != 0)
-//                    {
-//                        dataLength = dataLength  - value;
-//                        byte[] sendByte = new byte[dataLength];
-//                        System.arraycopy( datas,value,sendByte,0,dataLength);
-//
-//                        value = usbDeviceConnection.bulkTransfer(usbEndPoint[1][0],sendByte, len + 3,100);
-//                        datas = sendByte;
-//                    }
-                    length += len;
+                    break;
                 }
-             Tools.WriteData("sendLen:" + length + "\n");
+                byte [] datas = DataTransfer.getDataBuffer( port.getPortId(), data, len);
+                int dataLength = len + 3;
+                int value = usbDeviceConnection.bulkTransfer(usbEndPoint[1][0],datas, len + 3,100);
+                while (value != dataLength && value != 0)
+                {
+                    dataLength = dataLength  - value;
+                    byte[] sendByte = new byte[dataLength];
+                    System.arraycopy( datas,value,sendByte,0,dataLength);
 
-                //关闭文件
-//                if (fout != null){
-//                    try {
-//                        fout.close();
-//                    } catch (IOException e) {
-//                        e.printStackTrace();
-//                    }
-//                }
-
-                port.ts = System.currentTimeMillis();
-
-
-
+                    value = usbDeviceConnection.bulkTransfer(usbEndPoint[1][0],sendByte, len + 3,100);
+                    datas = sendByte;
+                }
+                length += len;
+            }
         }
     }
 
@@ -481,14 +456,10 @@ public class SerialComPortControl {
 
 
                     dataLength = usbDeviceConnection.bulkTransfer( usbEndPoint[1][1], myBuffer, RECV_LENGTH, 100);
-//                    byte[] t = new byte[dataLength];
-//                    System.arraycopy(myBuffer, 0, t, 0, dataLength);
-//                    Tools.WriteData(0, t);
 
                     for (int i = 0; i < dataLength; i++) {
                         if( readDateTransfer.AddData(myBuffer[i]))
                         {
-                            //直接发广播 TODO
                             SerialComPort port = portList.get( readDateTransfer.getWho()  -1);
                             if( port != null && !port.getAppAction().equals(""))
                             {
@@ -497,8 +468,6 @@ public class SerialComPortControl {
                                 sendMessageFromCom(port.getAppAction(),port.getPortId(),datas,readDateTransfer.getLen());
                                 Tools.WriteData(port.getPortId(), datas);
                             }
-//                            portList.get( readDateTransfer.getWho()  -1).readBuffer.put(readDateTransfer.getDatas(),0,readDateTransfer.getLen());
-
                             readDateTransfer.reset();
                         }
                     }

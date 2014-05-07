@@ -107,11 +107,11 @@ public class Tools {
     {
         context.sendBroadcast(new Intent(action).putExtras(data));
     }
-//    public final static void showShortToast(android.content.Context context, java.lang.CharSequence message)
-//    {
-//        Toast.makeText(context, message, Toast.LENGTH_LONG).show();
-//    }
-//
+    public final static void showShortToast(android.content.Context context, java.lang.CharSequence message)
+    {
+        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
+    }
+
 //    public final static void showLongToast(android.content.Context context, java.lang.CharSequence message)
 //    {
 //        Toast.makeText(context, message, Toast.LENGTH_LONG).show();

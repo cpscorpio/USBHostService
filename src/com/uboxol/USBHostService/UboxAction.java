@@ -8,7 +8,7 @@ package com.uboxol.USBHostService;
 
 enum DeviceStatus {
     NOT_CONNECT(0),
-    CONNECTING(1),
+    NO_PERMISSION(1),
     CONNECTED(2);
 
     private int value;

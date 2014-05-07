@@ -4,9 +4,6 @@ package com.uboxol.USBHostService;
 public class DataTransfer {
     private byte[] DataBuffer = new byte[64];
     private int DataBufferLen = 0;
-    private int WritePos = 0;
-    private int mWho=0;
-    private int Len=0;
 
     public DataTransfer(){
         reset();
@@ -15,10 +12,7 @@ public class DataTransfer {
     public void reset()
     {
         DataBuffer = new byte[64];
-        WritePos = 0;
-        Len = 0;
         DataBufferLen = 0;
-        mWho=0;
     }
 
 
@@ -55,9 +49,9 @@ public class DataTransfer {
 
     public byte[] getDatas() {
 
-        Len = (int)DataBuffer[2];
-        byte[] data = new byte[Len];
-        System.arraycopy( DataBuffer, 3, data, 0, Len);
+        int length = (int)DataBuffer[2];
+        byte[] data = new byte[length];
+        System.arraycopy( DataBuffer, 3, data, 0, length);
         return data;
     }
 
@@ -65,12 +59,10 @@ public class DataTransfer {
         if(!checkData())
         {
             DataBufferLen = 0;
-            WritePos = 0;
         }
 
         if( DataBufferLen < 63){
-            DataBufferLen++;
-            DataBuffer[ WritePos++]=mbyte;
+            DataBuffer[ DataBufferLen++]=mbyte;
         }
 
         return DataBufferLen >= getLen() + 3;

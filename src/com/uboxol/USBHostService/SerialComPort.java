@@ -2,11 +2,11 @@ package com.uboxol.USBHostService;
 
 
 enum SerialComPortStatus {
-    NOT_CONNECT(0),
-    CONNECTED(1),
-    BE_USAGE(2),
-    CONNECT_ERROR(3) ;
-
+    NOT_CONNECT(-1),
+    CONNECTED(0),
+    DEVICE_NOT_CONNECT(1),
+    DEVICE_NO_PERMISSION(2),
+    BE_USAGE(3);
     private int value;
 
     SerialComPortStatus(int v)
@@ -33,16 +33,15 @@ public class SerialComPort {
 
     private int dataBits = 0;   //7 or 8
 
-
+    private SerialComPortStatus serialComPortStatus;
 
     private String appAction = "";
-    public long ts = System.currentTimeMillis();
 
     public int maxSendLength = 0;
 
-    public MessageBuffer sendBuffer = new MessageBuffer(0x500000);  //16M
+    private MessageBuffer sendBuffer = null;  //5M
 
-    public MessageBuffer readBuffer = new MessageBuffer(0x500000);  //16M
+    private MessageBuffer readBuffer = null;  //5M
 
 
     SerialComPort(int com)
@@ -53,6 +52,24 @@ public class SerialComPort {
         this.dataBits = 8;
         this.parity = 0;
         this.appAction = "";
+        serialComPortStatus = SerialComPortStatus.NOT_CONNECT;
+    }
+
+    public void open(int baudRate, int stopBits, int dataBits, int parity)
+    {
+        this.stopBits = stopBits;
+        this.baudRate = baudRate;
+        this.dataBits = dataBits;
+        this.parity = parity;
+        this.readBuffer = new MessageBuffer(5 * this.baudRate);
+        this.sendBuffer = new MessageBuffer(0x200000);
+        this.serialComPortStatus = SerialComPortStatus.CONNECTED;
+    }
+    public void close()
+    {
+        this.readBuffer = null;
+        this.sendBuffer = null;
+        this.serialComPortStatus = SerialComPortStatus.NOT_CONNECT;
     }
 
     SerialComPort(int com, int baudRate, int stopBits, int dataBits, int parity)
@@ -63,14 +80,15 @@ public class SerialComPort {
         this.dataBits = dataBits;
         this.parity = parity;
         this.appAction = "";
+        serialComPortStatus = SerialComPortStatus.NOT_CONNECT;
+    }
+    public SerialComPortStatus getStatus() {
+        return serialComPortStatus;
     }
 
-
-    public void setMaxSendLength(byte [] b)
-    {
-
+    public void setStatus(SerialComPortStatus status) {
+        this.serialComPortStatus = status;
     }
-
     public String getString()
     {
         return String.format("COM%d baudRate:%d, stopBits %d, parity %d, dataBits %d", this.portId, this.baudRate, this.stopBits, this.parity, this.dataBits);
@@ -94,7 +112,61 @@ public class SerialComPort {
         this.appAction = appAction;
     }
 
-    public byte[] toBytes()
+    public void send( byte[] b, int offset, int len) {
+        if (sendBuffer!= null)
+        {
+            sendBuffer.put(b, offset, len);
+        }
+    }
+
+    public int getSendData( byte[] b, int offset, int len)
+    {
+        if (sendBuffer!= null)
+        {
+            return sendBuffer.read(b, offset, len);
+        }
+        return 0;
+    }
+
+    public void putReadData(byte[] b, int offset, int len)
+    {
+        if (readBuffer!= null)
+        {
+            readBuffer.put(b, offset, len);
+        }
+    }
+    public int read( byte[] b, int offset, int len) {
+        if (readBuffer != null)
+        {
+            return readBuffer.read(b,offset,len);
+        }
+        return 0;
+    }
+
+    public int getReadSize()
+    {
+        if (readBuffer != null)
+        {
+            return readBuffer.getSize();
+        }
+        else
+        {
+            return 0;
+        }
+    }
+
+    public int getSendSize()
+    {
+        if (sendBuffer != null)
+        {
+            return sendBuffer.getSize();
+        }
+        else
+        {
+            return 0;
+        }
+    }
+    public byte[] getSerialBytes()
     {
         /**
          * uint32_t bitrate; //110 / 300 / 9600/ 115200 ...

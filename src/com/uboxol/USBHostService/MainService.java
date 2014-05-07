@@ -103,7 +103,8 @@ public class MainService extends Service {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            Tools.info("action " + intent.getAction());
+//            Tools.showShortToast(context, "main Server " + intent.getAction());
+            Tools.info(intent.getAction());
             Tools.getTopActivityCN(context);
 
             try {
@@ -112,14 +113,10 @@ public class MainService extends Service {
                 {
                     serialComPortControl.close();
                 }
-                else if(intent.getAction().equals(UboxAction.CACHE_LENGTH_MESSAGE))
-                {
-                    serialComPortControl.checkCacheLength();
-                }
                 else if(intent.getAction().equals(UboxAction.ACTION_USB_PERMISSION))    //获取USB权限返回值
                 {
 
-                    boolean needSend = serialComPortControl.status == DeviceStatus.CONNECTING;
+                    boolean needSend = serialComPortControl.status == DeviceStatus.NO_PERMISSION;
 
 
                     if( intent.getBooleanExtra( UsbManager.EXTRA_PERMISSION_GRANTED, false))
@@ -151,7 +148,8 @@ public class MainService extends Service {
                 }
                 else if(intent.getAction().equals(UsbManager.ACTION_USB_DEVICE_ATTACHED))
                 {
-                    //插入设备监听 TODO 无效
+                    //插入设备监听 需打开程序才能生效
+                    DeviceStatus status = serialComPortControl.getDeviceStatus();
                 }
                 else if(intent.getAction().equals(UboxAction.SERVICE_DISCONNECT))
                 {
@@ -166,7 +164,7 @@ public class MainService extends Service {
                     try {
                         DeviceStatus status = serialComPortControl.getDeviceStatus();
 
-                        if(status.equals(DeviceStatus.CONNECTING))
+                        if(status.equals(DeviceStatus.NO_PERMISSION))
                         {
                             printDebugLog("add " + intent.getStringExtra(UboxAction.APP_ACTION) + " to list");
                             toOpenDeviceApps.add(intent.getStringExtra(UboxAction.APP_ACTION));
@@ -188,22 +186,13 @@ public class MainService extends Service {
                     String appAction = intent.getStringExtra(UboxAction.APP_ACTION);
                     if(appAction != null)
                     {
-                        SerialComPortStatus connected = SerialComPortStatus.CONNECTED;
-
-                        if( serialComPortControl.isConnected())
-                        {
-                            SerialComPort port = new SerialComPort(
+                        SerialComPortStatus connected = serialComPortControl.open(
                                     intent.getIntExtra(UboxAction.CONFIG_COM,0),
                                     intent.getIntExtra(UboxAction.CONFIG_BIT_RATE,9600),
                                     intent.getIntExtra(UboxAction.CONFIG_STOP_BITS,0),
                                     intent.getIntExtra(UboxAction.CONFIG_DATA_TYPE,8),
-                                    intent.getIntExtra(UboxAction.CONFIG_PARITY_TYPE,0) );
-                            connected = serialComPortControl.open( port, appAction);
-                        }
-                        else
-                        {
-                            connected = SerialComPortStatus.NOT_CONNECT;
-                        }
+                                    intent.getIntExtra(UboxAction.CONFIG_PARITY_TYPE,0),
+                                    appAction);
 
                         //return to APP
                         Intent i = new Intent(appAction);
